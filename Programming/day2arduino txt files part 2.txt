@@ -1,0 +1,201 @@
+# Team Member Names: Josh, Daniel, Ts
+# Purpose of Code: Toggle Rotation of a servo based on a switch input
+# Date started: 9/16/2026
+# Date of Last Update: 9/16/2026
+# Explination of AI: We used AI to write the code, fix voltage conversion, along with fixing it not looping indefinetely. 
+
+# AI Prompt 1: Arduino esp32. Programming language in micropython.
+# Refer to the documentation first.
+
+# Read from pin A7 GPI014. This should be a analog reading.
+
+# This pin is reading a value from our water sensor where when theres no water, it should be reading 3.3v and when theres water the voltage reading drops. Convert the reading we get from A7 GPI 014 to voltage. Every minute, this reading and voltage conversion should be saved to a CSV file. All the readings and voltage conversion should be saved to the SAME csv file. No values should be overwritten in the csv file.
+
+# AI prompt 2: Arduino nano esp32
+
+# AI Prompt 3: also print out the readings to the console
+
+# AI Prompt 4: this is only running once not every second or so
+
+# AI Prompt 5: the max voltage reading should be 3.3v not 5v
+
+# AI Prompt 6: csv should also log the same thing at the same frequency as the console prints
+
+# AI Prompt 7: each csv file should log 5 entries
+
+from machine import ADC, Pin
+import time
+import os
+
+# ============================================================
+# Configuration
+# ============================================================
+
+# Arduino Nano ESP32:
+# A7 = GPIO14
+SENSOR_PIN = 14
+
+# Read every second
+INTERVAL_MS = 1000
+
+# Number of readings per CSV file
+ENTRIES_PER_FILE = 5
+
+# Maximum sensor voltage
+MAX_VOLTAGE = 3.3
+
+# Maximum 16-bit ADC value
+MAX_ADC = 65535
+
+
+# ============================================================
+# ADC Setup
+# ============================================================
+
+adc = ADC(Pin(SENSOR_PIN))
+adc.atten(ADC.ATTN_11DB)
+
+
+# ============================================================
+# Find the next available CSV filename
+# ============================================================
+
+def get_next_filename():
+    number = 1
+
+    while True:
+
+        filename = "water_sensor_{:03d}.csv".format(number)
+
+        try:
+            os.stat(filename)
+            number += 1
+
+        except OSError:
+            return filename
+
+
+# ============================================================
+# Main Loop
+# ============================================================
+
+entry_count = 0
+csv_file = None
+csv_filename = None
+
+while True:
+
+    # --------------------------------------------------------
+    # Create a new CSV file when needed
+    # --------------------------------------------------------
+
+    if entry_count == 0:
+
+        csv_filename = get_next_filename()
+
+        csv_file = open(csv_filename, "w")
+
+        csv_file.write(
+            "timestamp_ms,raw_adc,voltage_v\n"
+        )
+
+        print("")
+        print("========================================")
+        print("New CSV file: {}".format(csv_filename))
+        print("========================================")
+
+
+    # Record start time
+    start_time = time.ticks_ms()
+
+
+    # --------------------------------------------------------
+    # Read ADC
+    # --------------------------------------------------------
+
+    raw_adc = adc.read_u16()
+
+
+    # --------------------------------------------------------
+    # Convert ADC reading to voltage
+    #
+    # 0     = 0.000 V
+    # 65535 = 3.300 V
+    # --------------------------------------------------------
+
+    voltage_v = (
+        raw_adc / MAX_ADC
+    ) * MAX_VOLTAGE
+
+
+    # Timestamp
+    timestamp_ms = time.ticks_ms()
+
+
+    # --------------------------------------------------------
+    # Print to console
+    # --------------------------------------------------------
+
+    print(
+        "Entry {} | Time: {} ms | Raw ADC: {} | Voltage: {:.3f} V".format(
+            entry_count + 1,
+            timestamp_ms,
+            raw_adc,
+            voltage_v
+        )
+    )
+
+
+    # --------------------------------------------------------
+    # Write the SAME reading to CSV
+    # --------------------------------------------------------
+
+    csv_file.write(
+        "{},{},{:.3f}\n".format(
+            timestamp_ms,
+            raw_adc,
+            voltage_v
+        )
+    )
+
+    # Make sure data is physically written to the file
+    csv_file.flush()
+
+
+    # Increase entry count
+    entry_count += 1
+
+
+    # --------------------------------------------------------
+    # Close CSV after 5 entries
+    # --------------------------------------------------------
+
+    if entry_count >= ENTRIES_PER_FILE:
+
+        csv_file.close()
+
+        print(
+            ">>> {} complete ({} entries)".format(
+                csv_filename,
+                ENTRIES_PER_FILE
+            )
+        )
+
+        csv_file = None
+        csv_filename = None
+        entry_count = 0
+
+
+    # --------------------------------------------------------
+    # Wait until one second has elapsed
+    # --------------------------------------------------------
+
+    elapsed = time.ticks_diff(
+        time.ticks_ms(),
+        start_time
+    )
+
+    remaining = INTERVAL_MS - elapsed
+
+    if remaining > 0:
+        time.sleep_ms(remaining)
